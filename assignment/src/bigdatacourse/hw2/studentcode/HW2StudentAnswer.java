@@ -1,48 +1,118 @@
 package bigdatacourse.hw2.studentcode;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
 
 import bigdatacourse.hw2.HW2API;
 
-public class HW2StudentAnswer implements HW2API{
-	
-	// general consts
-	public static final String		NOT_AVAILABLE_VALUE 	=		"na";
+public class HW2StudentAnswer implements HW2API {
 
-	// CQL stuff
-	//TODO: add here create table and query designs 
-	
+	// general consts
+	public static final String NOT_AVAILABLE_VALUE = "na";
+
+	// CQL table names
+	private static final String TABLE_ITEMS = "items";
+	private static final String TABLE_REVIEWS_BY_USER = "reviews_by_user";
+	private static final String TABLE_REVIEWS_BY_ITEM = "reviews_by_item";
+
+	// CQL create table statements
+	private static final String CQL_CREATE_ITEMS = 
+		"CREATE TABLE IF NOT EXISTS " + TABLE_ITEMS + " (" +
+		"asin TEXT PRIMARY KEY, " +
+		"title TEXT, " +
+		"image_url TEXT, " +
+		"categories SET<TEXT>, " +
+		"description TEXT" +
+		")";
+
+	private static final String CQL_CREATE_REVIEWS_BY_USER = 
+		"CREATE TABLE IF NOT EXISTS " + TABLE_REVIEWS_BY_USER + " (" +
+		"reviewer_id TEXT, " +
+		"review_time TIMESTAMP, " +
+		"asin TEXT, " +
+		"reviewer_name TEXT, " +
+		"rating INT, " +
+		"summary TEXT, " +
+		"review_text TEXT, " +
+		"PRIMARY KEY (reviewer_id, review_time, asin)" +
+		") WITH CLUSTERING ORDER BY (review_time DESC, asin ASC)";
+
+	private static final String CQL_CREATE_REVIEWS_BY_ITEM = 
+		"CREATE TABLE IF NOT EXISTS " + TABLE_REVIEWS_BY_ITEM + " (" +
+		"asin TEXT, " +
+		"review_time TIMESTAMP, " +
+		"reviewer_id TEXT, " +
+		"reviewer_name TEXT, " +
+		"rating INT, " +
+		"summary TEXT, " +
+		"review_text TEXT, " +
+		"PRIMARY KEY (asin, review_time, reviewer_id)" +
+		") WITH CLUSTERING ORDER BY (review_time DESC, reviewer_id ASC)";
+
+	// CQL prepared statement strings
+	private static final String CQL_INSERT_ITEM = 
+		"INSERT INTO " + TABLE_ITEMS + " (asin, title, image_url, categories, description) VALUES (?, ?, ?, ?, ?)";
+
+	private static final String CQL_INSERT_REVIEW_BY_USER = 
+		"INSERT INTO " + TABLE_REVIEWS_BY_USER + " (reviewer_id, review_time, asin, reviewer_name, rating, summary, review_text) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+	private static final String CQL_INSERT_REVIEW_BY_ITEM = 
+		"INSERT INTO " + TABLE_REVIEWS_BY_ITEM + " (asin, review_time, reviewer_id, reviewer_name, rating, summary, review_text) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+	private static final String CQL_SELECT_ITEM = 
+		"SELECT * FROM " + TABLE_ITEMS + " WHERE asin = ?";
+
+	private static final String CQL_SELECT_REVIEWS_BY_USER = 
+		"SELECT * FROM " + TABLE_REVIEWS_BY_USER + " WHERE reviewer_id = ?";
+
+	private static final String CQL_SELECT_REVIEWS_BY_ITEM = 
+		"SELECT * FROM " + TABLE_REVIEWS_BY_ITEM + " WHERE asin = ?";
+
 	// cassandra session
 	private CqlSession session;
-	
+
 	// prepared statements
-	//TODO: add here prepared statements variables
-	
-	
+	private PreparedStatement pstmtInsertItem;
+	private PreparedStatement pstmtInsertReviewByUser;
+	private PreparedStatement pstmtInsertReviewByItem;
+	private PreparedStatement pstmtSelectItem;
+	private PreparedStatement pstmtSelectReviewsByUser;
+	private PreparedStatement pstmtSelectReviewsByItem;
+
 	@Override
 	public void connect(String pathAstraDBBundleFile, String username, String password, String keyspace) {
 		if (session != null) {
 			System.out.println("ERROR - cassandra is already connected");
 			return;
 		}
-		
+
 		System.out.println("Initializing connection to Cassandra...");
-		
+
 		this.session = CqlSession.builder()
 				.withCloudSecureConnectBundle(Paths.get(pathAstraDBBundleFile))
 				.withAuthCredentials(username, password)
 				.withKeyspace(keyspace)
 				.build();
-		
+
 		System.out.println("Initializing connection to Cassandra... Done");
 	}
-
 
 	@Override
 	public void close() {
@@ -50,144 +120,250 @@ public class HW2StudentAnswer implements HW2API{
 			System.out.println("Cassandra connection is already closed");
 			return;
 		}
-		
+
 		System.out.println("Closing Cassandra connection...");
 		session.close();
 		System.out.println("Closing Cassandra connection... Done");
 	}
 
-	
-	
 	@Override
 	public void createTables() {
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		System.out.println("Creating tables...");
+		
+		session.execute(CQL_CREATE_ITEMS);
+		System.out.println("Created table: " + TABLE_ITEMS);
+		
+		session.execute(CQL_CREATE_REVIEWS_BY_USER);
+		System.out.println("Created table: " + TABLE_REVIEWS_BY_USER);
+		
+		session.execute(CQL_CREATE_REVIEWS_BY_ITEM);
+		System.out.println("Created table: " + TABLE_REVIEWS_BY_ITEM);
+		
+		System.out.println("Creating tables... Done");
 	}
 
 	@Override
 	public void initialize() {
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		System.out.println("Initializing prepared statements...");
+		
+		pstmtInsertItem = session.prepare(CQL_INSERT_ITEM);
+		pstmtInsertReviewByUser = session.prepare(CQL_INSERT_REVIEW_BY_USER);
+		pstmtInsertReviewByItem = session.prepare(CQL_INSERT_REVIEW_BY_ITEM);
+		pstmtSelectItem = session.prepare(CQL_SELECT_ITEM);
+		pstmtSelectReviewsByUser = session.prepare(CQL_SELECT_REVIEWS_BY_USER);
+		pstmtSelectReviewsByItem = session.prepare(CQL_SELECT_REVIEWS_BY_ITEM);
+		
+		System.out.println("Initializing prepared statements... Done");
 	}
 
 	@Override
 	public void loadItems(String pathItemsFile) throws Exception {
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		System.out.println("Loading items from: " + pathItemsFile);
+		
+		ExecutorService executor = Executors.newFixedThreadPool(250);
+		BufferedReader reader = new BufferedReader(new FileReader(pathItemsFile));
+		
+		String line;
+		int count = 0;
+		
+		while ((line = reader.readLine()) != null) {
+			final String jsonLine = line;
+			final int itemNum = count;
+			
+			executor.execute(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						JSONObject json = new JSONObject(jsonLine);
+						
+						String asin = json.optString("asin", NOT_AVAILABLE_VALUE);
+						String title = json.optString("title", NOT_AVAILABLE_VALUE);
+						String imageUrl = json.optString("imUrl", NOT_AVAILABLE_VALUE);
+						String description = json.optString("description", NOT_AVAILABLE_VALUE);
+						
+						// Handle categories
+						Set<String> categories = new TreeSet<>();
+						if (json.has("categories")) {
+							JSONArray categoriesArray = json.getJSONArray("categories");
+							for (int i = 0; i < categoriesArray.length(); i++) {
+								JSONArray categoryPath = categoriesArray.getJSONArray(i);
+								for (int j = 0; j < categoryPath.length(); j++) {
+									categories.add(categoryPath.getString(j));
+								}
+							}
+						}
+						if (categories.isEmpty()) {
+							categories.add(NOT_AVAILABLE_VALUE);
+						}
+						
+						BoundStatement bstmt = pstmtInsertItem.bind()
+								.setString(0, asin)
+								.setString(1, title)
+								.setString(2, imageUrl)
+								.setSet(3, categories, String.class)
+								.setString(4, description);
+						
+						session.executeAsync(bstmt);
+						
+						if (itemNum % 1000 == 0) {
+							System.out.println("Loaded item: " + itemNum);
+						}
+					} catch (Exception e) {
+						System.err.println("Error loading item: " + e.getMessage());
+					}
+				}
+			});
+			
+			count++;
+		}
+		
+		reader.close();
+		executor.shutdown();
+		executor.awaitTermination(1, TimeUnit.HOURS);
+		
+		System.out.println("Loading items... Done. Total items: " + count);
 	}
 
 	@Override
 	public void loadReviews(String pathReviewsFile) throws Exception {
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		System.out.println("Loading reviews from: " + pathReviewsFile);
+		
+		ExecutorService executor = Executors.newFixedThreadPool(250);
+		BufferedReader reader = new BufferedReader(new FileReader(pathReviewsFile));
+		
+		String line;
+		int count = 0;
+		
+		while ((line = reader.readLine()) != null) {
+			final String jsonLine = line;
+			final int reviewNum = count;
+			
+			executor.execute(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						JSONObject json = new JSONObject(jsonLine);
+						
+						String reviewerId = json.optString("reviewerID", NOT_AVAILABLE_VALUE);
+						String asin = json.optString("asin", NOT_AVAILABLE_VALUE);
+						String reviewerName = json.optString("reviewerName", NOT_AVAILABLE_VALUE);
+						int rating = json.optInt("overall", -1);
+						String summary = json.optString("summary", NOT_AVAILABLE_VALUE);
+						String reviewText = json.optString("reviewText", NOT_AVAILABLE_VALUE);
+						long unixReviewTime = json.optLong("unixReviewTime", 0);
+						Instant reviewTime = Instant.ofEpochSecond(unixReviewTime);
+						
+						// Insert into reviews_by_user table
+						BoundStatement bstmtUser = pstmtInsertReviewByUser.bind()
+								.setString(0, reviewerId)
+								.setInstant(1, reviewTime)
+								.setString(2, asin)
+								.setString(3, reviewerName)
+								.setInt(4, rating)
+								.setString(5, summary)
+								.setString(6, reviewText);
+						
+						session.executeAsync(bstmtUser);
+						
+						// Insert into reviews_by_item table
+						BoundStatement bstmtItem = pstmtInsertReviewByItem.bind()
+								.setString(0, asin)
+								.setInstant(1, reviewTime)
+								.setString(2, reviewerId)
+								.setString(3, reviewerName)
+								.setInt(4, rating)
+								.setString(5, summary)
+								.setString(6, reviewText);
+						
+						session.executeAsync(bstmtItem);
+						
+						if (reviewNum % 10000 == 0) {
+							System.out.println("Loaded review: " + reviewNum);
+						}
+					} catch (Exception e) {
+						System.err.println("Error loading review: " + e.getMessage());
+					}
+				}
+			});
+			
+			count++;
+		}
+		
+		reader.close();
+		executor.shutdown();
+		executor.awaitTermination(1, TimeUnit.HOURS);
+		
+		System.out.println("Loading reviews... Done. Total reviews: " + count);
 	}
 
 	@Override
 	public String item(String asin) {
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		BoundStatement bstmt = pstmtSelectItem.bind().setString(0, asin);
+		ResultSet rs = session.execute(bstmt);
+		Row row = rs.one();
 		
-		// you should return the item's description based on the formatItem function.
-		// if it does not exist, return the string "not exists"
-		// example for asin B005QB09TU
-		String item = "not exists";	// if not exists
-		if (true) // if exists
-			item = formatItem(
-				"B005QB09TU",
-				"Circa Action Method Notebook",
-				"http://ecx.images-amazon.com/images/I/41ZxT4Opx3L._SY300_.jpg",
-				new TreeSet<String>(Arrays.asList("Notebooks & Writing Pads", "Office & School Supplies", "Office Products", "Paper")),
-				"Circa + Behance = Productivity. The minute-to-minute flexibility of Circa note-taking meets the organizational power of the Action Method by Behance. The result is enhanced productivity, so you'll formulate strategies and achieve objectives even more efficiently with this Circa notebook and project planner. Read Steve's blog on the Behance/Levenger partnership Customize with your logo. Corporate pricing available. Please call 800-357-9991."
-			);
+		if (row == null) {
+			return "not exists";
+		}
 		
-		return item;
+		String title = row.getString("title");
+		String imageUrl = row.getString("image_url");
+		Set<String> categories = row.getSet("categories", String.class);
+		String description = row.getString("description");
+		
+		return formatItem(asin, title, imageUrl, categories, description);
 	}
-	
-	
+
 	@Override
 	public Iterable<String> userReviews(String reviewerID) {
-		// the order of the reviews should be by the time (desc), then by the asin
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		ArrayList<String> reviewReprs = new ArrayList<>();
 		
-		// required format - example for reviewerID A17OJCRPMYWXWV
-		ArrayList<String> reviewRepers = new ArrayList<String>();
-		String reviewRepr1 = formatReview(
-			Instant.ofEpochSecond(1362614400),
-			"B005QDG2AI",
-			"A17OJCRPMYWXWV",
- 			"Old Flour Child",
-			5,
-			"excellent quality",
-			"These cartridges are excellent .  I purchased them for the office where I work and they perform  like a dream.  They are a fraction of the price of the brand name cartridges.  I will order them again!"
-		);
-		reviewRepers.add(reviewRepr1);
-
-		String reviewRepr2 = formatReview(
-			Instant.ofEpochSecond(1360108800),
-			"B003I89O6W",
-			"A17OJCRPMYWXWV",
-			"Old Flour Child",
-			5,
-			"Checkbook Cover",
-			"Purchased this for the owner of a small automotive repair business I work for.  The old one was being held together with duct tape.  When I saw this one on Amazon (where I look for almost everything first) and looked at the price, I knew this was the one.  Really nice and very sturdy."
-		);
-		reviewRepers.add(reviewRepr2);
-
-		System.out.println("total reviews: " + 2);
-		return reviewRepers;
+		BoundStatement bstmt = pstmtSelectReviewsByUser.bind().setString(0, reviewerID);
+		ResultSet rs = session.execute(bstmt);
+		
+		int count = 0;
+		for (Row row : rs) {
+			Instant reviewTime = row.getInstant("review_time");
+			String asin = row.getString("asin");
+			String reviewerName = row.getString("reviewer_name");
+			int rating = row.getInt("rating");
+			String summary = row.getString("summary");
+			String reviewText = row.getString("review_text");
+			
+			String reviewRepr = formatReview(reviewTime, asin, reviewerID, reviewerName, rating, summary, reviewText);
+			reviewReprs.add(reviewRepr);
+			count++;
+		}
+		
+		System.out.println("total reviews: " + count);
+		return reviewReprs;
 	}
 
 	@Override
 	public Iterable<String> itemReviews(String asin) {
-		// the order of the reviews should be by the time (desc), then by the reviewerID
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
+		ArrayList<String> reviewReprs = new ArrayList<>();
 		
-		// required format - example for asin B005QDQXGQ
-		ArrayList<String> reviewRepers = new ArrayList<String>();
-		reviewRepers.add(
-			formatReview(
-				Instant.ofEpochSecond(1391299200),
-				"B005QDQXGQ",
-				"A1I5J5RUJ5JB4B",
-				"T. Taylor \"jediwife3\"",
-				5,
-				"Play and Learn",
-				"The kids had a great time doing hot potato and then having to answer a question if they got stuck with the &#34;potato&#34;. The younger kids all just sat around turnin it to read it."
-			)
-		);
-
-		reviewRepers.add(
-			formatReview(
-				Instant.ofEpochSecond(1390694400),
-				"B005QDQXGQ",
-				"\"AF2CSZ8IP8IPU\"",
-				"Corey Valentine \"sue\"",
-				1,
-			 	"Not good",
-				"This Was not worth 8 dollars would not recommend to others to buy for kids at that price do not buy"
-			)
-		);
+		BoundStatement bstmt = pstmtSelectReviewsByItem.bind().setString(0, asin);
+		ResultSet rs = session.execute(bstmt);
 		
-		reviewRepers.add(
-			formatReview(
-				Instant.ofEpochSecond(1388275200),
-				"B005QDQXGQ",
-				"A27W10NHSXI625",
-				"Beth",
-				2,
-				"Way overpriced for a beach ball",
-				"It was my own fault, I guess, for not thoroughly reading the description, but this is just a blow-up beach ball.  For that, I think it was very overpriced.  I thought at least I was getting one of those pre-inflated kickball-type balls that you find in the giant bins in the chain stores.  This did have a page of instructions for a few different games kids can play.  Still, I think kids know what to do when handed a ball, and there's a lot less you can do with a beach ball than a regular kickball, anyway."
-			)
-		);
-
-		System.out.println("total reviews: " + 3);
-		return reviewRepers;
+		int count = 0;
+		for (Row row : rs) {
+			Instant reviewTime = row.getInstant("review_time");
+			String reviewerId = row.getString("reviewer_id");
+			String reviewerName = row.getString("reviewer_name");
+			int rating = row.getInt("rating");
+			String summary = row.getString("summary");
+			String reviewText = row.getString("review_text");
+			
+			String reviewRepr = formatReview(reviewTime, asin, reviewerId, reviewerName, rating, summary, reviewText);
+			reviewReprs.add(reviewRepr);
+			count++;
+		}
+		
+		System.out.println("total reviews: " + count);
+		return reviewReprs;
 	}
 
-	
-	
 	// Formatting methods, do not change!
 	private String formatItem(String asin, String title, String imageUrl, Set<String> categories, String description) {
 		String itemDesc = "";
@@ -199,15 +375,10 @@ public class HW2StudentAnswer implements HW2API{
 		return itemDesc;
 	}
 
-	private String formatReview(Instant time, String asin, String reviewerId, String reviewerName, Integer rating, String summary, String reviewText) {
-		String reviewDesc = 
-			"time: " + time + 
-			", asin: " 	+ asin 	+
-			", reviewerID: " 	+ reviewerId +
-			", reviewerName: " 	+ reviewerName 	+
-			", rating: " 		+ rating	+ 
-			", summary: " 		+ summary +
-			", reviewText: " 	+ reviewText + "\n";
+	private String formatReview(Instant time, String asin, String reviewerId, String reviewerName, Integer rating,
+			String summary, String reviewText) {
+		String reviewDesc = "time: " + time + ", asin: " + asin + ", reviewerID: " + reviewerId + ", reviewerName: "
+				+ reviewerName + ", rating: " + rating + ", summary: " + summary + ", reviewText: " + reviewText + "\n";
 		return reviewDesc;
 	}
 
