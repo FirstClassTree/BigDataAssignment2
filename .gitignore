@@ -11,6 +11,7 @@ runme.jar
 .vscode/
 
 data/
+build/
 
 # OS files
 .DS_Store
