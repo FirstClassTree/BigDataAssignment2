@@ -9,10 +9,7 @@ runme.jar
 *.iml
 .idea/
 .vscode/
-
-# AstraDB sensitive files (DO NOT commit these to public repos!)
-assignment/astradb/login-token.json
-assignment/astradb/secure-connect-hw2.zip
+data/
 
 # OS files
 .DS_Store
