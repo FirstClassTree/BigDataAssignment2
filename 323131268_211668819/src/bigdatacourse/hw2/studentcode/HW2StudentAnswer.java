@@ -42,25 +42,25 @@ public class HW2StudentAnswer implements HW2API {
 		"description TEXT" +
 		")";
 
-	private static final String CQL_CREATE_REVIEWS_BY_USER = 
+		private static final String CQL_CREATE_REVIEWS_BY_USER = 
 		"CREATE TABLE IF NOT EXISTS " + TABLE_REVIEWS_BY_USER + " (" +
 		"reviewer_id TEXT, " +
 		"review_time TIMESTAMP, " +
 		"asin TEXT, " +
 		"reviewer_name TEXT, " +
-		"rating INT, " +
+		"rating DOUBLE, " +
 		"summary TEXT, " +
 		"review_text TEXT, " +
 		"PRIMARY KEY (reviewer_id, review_time, asin)" +
 		") WITH CLUSTERING ORDER BY (review_time DESC, asin ASC)";
 
-	private static final String CQL_CREATE_REVIEWS_BY_ITEM = 
+		private static final String CQL_CREATE_REVIEWS_BY_ITEM = 
 		"CREATE TABLE IF NOT EXISTS " + TABLE_REVIEWS_BY_ITEM + " (" +
 		"asin TEXT, " +
 		"review_time TIMESTAMP, " +
 		"reviewer_id TEXT, " +
 		"reviewer_name TEXT, " +
-		"rating INT, " +
+		"rating DOUBLE, " +
 		"summary TEXT, " +
 		"review_text TEXT, " +
 		"PRIMARY KEY (asin, review_time, reviewer_id)" +
@@ -203,7 +203,7 @@ public class HW2StudentAnswer implements HW2API {
 								.setSet(3, categories, String.class)
 								.setString(4, description);
 						
-						session.executeAsync(bstmt);
+						session.execute(bstmt);
 						
 						if (itemNum % 1000 == 0) {
 							System.out.println("Loaded item: " + itemNum);
@@ -243,39 +243,39 @@ public class HW2StudentAnswer implements HW2API {
 				public void run() {
 					try {
 						JSONObject json = new JSONObject(jsonLine);
-						
+					
 						String reviewerId = json.optString("reviewerID", NOT_AVAILABLE_VALUE);
 						String asin = json.optString("asin", NOT_AVAILABLE_VALUE);
 						String reviewerName = json.optString("reviewerName", NOT_AVAILABLE_VALUE);
-						int rating = json.optInt("overall", -1);
+						double rating = json.optDouble("overall", -1.0);
 						String summary = json.optString("summary", NOT_AVAILABLE_VALUE);
 						String reviewText = json.optString("reviewText", NOT_AVAILABLE_VALUE);
 						long unixReviewTime = json.optLong("unixReviewTime", 0);
 						Instant reviewTime = Instant.ofEpochSecond(unixReviewTime);
-						
+
 						// Insert into reviews_by_user table
 						BoundStatement bstmtUser = pstmtInsertReviewByUser.bind()
-								.setString(0, reviewerId)
-								.setInstant(1, reviewTime)
-								.setString(2, asin)
-								.setString(3, reviewerName)
-								.setInt(4, rating)
-								.setString(5, summary)
-								.setString(6, reviewText);
-						
-						session.executeAsync(bstmtUser);
-						
+						.setString(0, reviewerId)
+						.setInstant(1, reviewTime)
+						.setString(2, asin)
+						.setString(3, reviewerName)
+						.setDouble(4, rating)
+						.setString(5, summary)
+						.setString(6, reviewText);
+
+						session.execute(bstmtUser);
+
 						// Insert into reviews_by_item table
 						BoundStatement bstmtItem = pstmtInsertReviewByItem.bind()
-								.setString(0, asin)
-								.setInstant(1, reviewTime)
-								.setString(2, reviewerId)
-								.setString(3, reviewerName)
-								.setInt(4, rating)
-								.setString(5, summary)
-								.setString(6, reviewText);
-						
-						session.executeAsync(bstmtItem);
+						.setString(0, asin)
+						.setInstant(1, reviewTime)
+						.setString(2, reviewerId)
+						.setString(3, reviewerName)
+						.setDouble(4, rating)
+						.setString(5, summary)
+						.setString(6, reviewText);
+
+						session.execute(bstmtItem);
 						
 						if (reviewNum % 10000 == 0) {
 							System.out.println("Loaded review: " + reviewNum);
@@ -326,10 +326,10 @@ public class HW2StudentAnswer implements HW2API {
 			Instant reviewTime = row.getInstant("review_time");
 			String asin = row.getString("asin");
 			String reviewerName = row.getString("reviewer_name");
-			int rating = row.getInt("rating");
+			double rating = row.getDouble("rating");
 			String summary = row.getString("summary");
 			String reviewText = row.getString("review_text");
-			
+
 			String reviewRepr = formatReview(reviewTime, asin, reviewerID, reviewerName, rating, summary, reviewText);
 			reviewReprs.add(reviewRepr);
 			count++;
@@ -351,10 +351,10 @@ public class HW2StudentAnswer implements HW2API {
 			Instant reviewTime = row.getInstant("review_time");
 			String reviewerId = row.getString("reviewer_id");
 			String reviewerName = row.getString("reviewer_name");
-			int rating = row.getInt("rating");
+			double rating = row.getDouble("rating");
 			String summary = row.getString("summary");
 			String reviewText = row.getString("review_text");
-			
+
 			String reviewRepr = formatReview(reviewTime, asin, reviewerId, reviewerName, rating, summary, reviewText);
 			reviewReprs.add(reviewRepr);
 			count++;
@@ -375,11 +375,11 @@ public class HW2StudentAnswer implements HW2API {
 		return itemDesc;
 	}
 
-	private String formatReview(Instant time, String asin, String reviewerId, String reviewerName, Integer rating,
-			String summary, String reviewText) {
+	private String formatReview(Instant time, String asin, String reviewerId, String reviewerName, Double rating,
+		String summary, String reviewText) {
 		String reviewDesc = "time: " + time + ", asin: " + asin + ", reviewerID: " + reviewerId + ", reviewerName: "
-				+ reviewerName + ", rating: " + rating + ", summary: " + summary + ", reviewText: " + reviewText + "\n";
+		+ reviewerName + ", rating: " + rating + ", summary: " + summary + ", reviewText: " + reviewText + "\n";
 		return reviewDesc;
-	}
+		}
 
 }
