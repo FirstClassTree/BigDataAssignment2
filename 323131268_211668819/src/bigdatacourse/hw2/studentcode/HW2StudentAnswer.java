@@ -176,7 +176,7 @@ public class HW2StudentAnswer implements HW2API {
 					try {
 						JSONObject json = new JSONObject(jsonLine);
 						
-						String asin = json.optString("asin", NOT_AVAILABLE_VALUE);
+						String asin = json.getString("asin");
 						String title = json.optString("title", NOT_AVAILABLE_VALUE);
 						String imageUrl = json.optString("imUrl", NOT_AVAILABLE_VALUE);
 						String description = json.optString("description", NOT_AVAILABLE_VALUE);
@@ -244,8 +244,8 @@ public class HW2StudentAnswer implements HW2API {
 					try {
 						JSONObject json = new JSONObject(jsonLine);
 					
-						String reviewerId = json.optString("reviewerID", NOT_AVAILABLE_VALUE);
-						String asin = json.optString("asin", NOT_AVAILABLE_VALUE);
+						String reviewerId = json.getString("reviewerID");
+						String asin = json.getString("asin");
 						String reviewerName = json.optString("reviewerName", NOT_AVAILABLE_VALUE);
 						double rating = json.optDouble("overall", -1.0);
 						String summary = json.optString("summary", NOT_AVAILABLE_VALUE);
